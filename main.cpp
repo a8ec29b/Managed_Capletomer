@@ -12,31 +12,26 @@
 
 const std::string AUTH_TOKEN = "WoYouYiYuZheng"; // 设置鉴权 Token
 
-//中文需要转换为unicode编码。
-std::string unicode_escape(const std::string& str) {
-    std::ostringstream escaped;
-    for (unsigned char c : str) {
-        if (c & 0x80) {  // Non-ASCII character
-            escaped << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)c;
-        } else {
-            escaped << c;
-        }
-    }
-    return escaped.str();
-}
 
-std::string urlDecode(const std::string& encoded) {
+std::string urlDecode(const std::string &encoded)
+{
     std::ostringstream decoded;
-    for (size_t i = 0; i < encoded.length(); ++i) {
-        if (encoded[i] == '%' && i + 2 < encoded.length()) {
+    for (size_t i = 0; i < encoded.length(); ++i)
+    {
+        if (encoded[i] == '%' && i + 2 < encoded.length())
+        {
             std::istringstream hex(encoded.substr(i + 1, 2));
             int value;
             hex >> std::hex >> value;
             decoded << static_cast<char>(value);
             i += 2;
-        } else if (encoded[i] == '+') {
+        }
+        else if (encoded[i] == '+')
+        {
             decoded << ' ';
-        } else {
+        }
+        else
+        {
             decoded << encoded[i];
         }
     }
@@ -65,12 +60,12 @@ std::string execCommand(const std::string &command)
 
 int main()
 {
-    //std::locale::global(std::locale("en_US.UTF-8")); //linux
-    //setlocale(LC_ALL, "en_US.UTF-8"); //win
+    // std::locale::global(std::locale("en_US.UTF-8")); //linux
+    // setlocale(LC_ALL, "en_US.UTF-8"); //win
     httplib::Server svr;
 
     // 定义 /execute 路由处理
-    svr.Get("/execute", [](const httplib::Request &req, httplib::Response &res)
+    svr.Get(R"(/execute/(.*))", [](const httplib::Request &req, httplib::Response &res)
             {
         // 验证鉴权 Token
         auto auth = req.get_header_value("Authorization");
@@ -80,19 +75,26 @@ int main()
             return;
         }
 
-        // 获取命令参数
-        auto command = req.get_param_value("command");
-        if (command.empty()) {
+        // 获取 /execute/ 后的参数
+        std::string command_path = req.matches[1];
+        if (command_path.empty()) {
             res.status = 400;
-            res.set_content("Bad Request: Missing 'command' parameter", "text/plain");
+            res.set_content("Bad Request: Missing command path", "text/plain");
             return;
         }
 
+        // 将斜杠替换为空格
+        std::replace(command_path.begin(), command_path.end(), '/', ' ');
+
+        // 构建 lpac 命令
+        std::string command = ".\\lpac.exe " + command_path;
+        std::cout << "custom command: " << command;
         // 执行命令并获取输出
         try {
             std::string output = execCommand(command);
             res.set_content(output, "text/plain");
-        } catch (const std::exception& e) {
+            std::cout << output;
+        } catch (const std::exception &e) {
             res.status = 500;
             res.set_content(std::string("Command execution failed: ") + e.what(), "text/plain");
         } });
@@ -205,7 +207,6 @@ int main()
         // Return the command output
         res.set_content(output, "text/plain");
         std::cout << output; });
-        
 
     // 运行服务器
     std::cout << "Server running on port 5000" << std::endl;
