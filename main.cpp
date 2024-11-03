@@ -10,12 +10,32 @@
 #include <locale>
 #include <codecvt>
 #include "base64.hpp"
+#include <fstream>
+#include <map>
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <stdlib.h>
+#endif
+
+#ifdef _WIN32
+void setEnvironmentVariables(){
+    std::cout << "Device is not 410 Wifi dongle." << std::endl;
+}
+#else
+void setEnvironmentVariables() {
+        setenv("QMI_DEVICE", "/dev/wwan0qmi0", 1);
+        setenv("LPAC_APDU", "qmi", 1);
+        std::cout << "Device is set to 410 wifi dongle." << std::endl;
+}
+#endif
 
 // Global configuration variables
 std::string AUTH_TOKEN;
 std::string LPAC_PATH;
 int PORT = 5000; // default value
 bool ENABLE_EXECUTE = false;
+bool is410WifiDongle = false;
 
 void loadConfig(const std::string &configPath) {
     std::ifstream configFile(configPath);
@@ -41,50 +61,9 @@ void loadConfig(const std::string &configPath) {
     if (configMap.count("lpac_path")) LPAC_PATH = configMap["lpac_path"];
     if (configMap.count("enable_execute")) ENABLE_EXECUTE = (configMap["enable_execute"] == "true");
     if (configMap.count("auth_token")) AUTH_TOKEN = configMap["auth_token"];
+    if (configMap.count("410WifiDongle")) is410WifiDongle = (configMap["410WifiDongle"] == "true");
+    setEnvironmentVariables();
 }
-
-
-/*
-std::string base64_decode(const std::string &in) {
-    const std::string base64_chars = 
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        "abcdefghijklmnopqrstuvwxyz"
-        "0123456789+/";
-
-    std::string out;
-    std::vector<int> T(256, -1);
-    for (int i = 0; i < 64; i++) {
-        T[base64_chars[i]] = i;
-    }
-
-    // 获取实际的字符串长度
-    size_t in_len = in.length();
-    
-    // 预分配输出缓冲区
-    out.reserve((in_len * 3) / 4);
-
-    unsigned int val = 0;
-    int valb = -8;
-    
-    // 使用显式长度而不是依赖字符串结束符
-    for (size_t i = 0; i < in_len; i++) {
-        unsigned char c = in[i];
-        if (T[c] == -1) continue;
-        
-        val = (val << 6) + T[c];
-        valb += 6;
-        
-        if (valb >= 0) {
-            out.push_back(char((val >> valb) & 0xFF));
-            valb -= 8;
-        }
-    }
-    std::cout << out;
-    out = out + "\0";
-    std::cout << out;
-    return out;
-}
-*/
 
 // 执行系统命令并返回输出
 std::string execCommand(const std::string &command)

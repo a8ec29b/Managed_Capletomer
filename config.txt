@@ -2,3 +2,4 @@ port=5000
 lpac_path=.\lpac.exe
 enable_execute=true
 auth_token=WoYouYiYuZheng
+410WifiDongle=false
