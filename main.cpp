@@ -4,14 +4,45 @@
 #include <memory>
 #include <stdexcept>
 #include <array>
-#include "httplib.h" // 需要下载 cpp-httplib 并包含在项目中
+#include "httplib.h"
 #include <sstream>
 #include <iomanip>
 #include <locale>
 #include <codecvt>
 #include "base64.hpp"
 
-const std::string AUTH_TOKEN = "WoYouYiYuZheng"; // 设置鉴权 Token
+// Global configuration variables
+std::string AUTH_TOKEN;
+std::string LPAC_PATH;
+int PORT = 5000; // default value
+bool ENABLE_EXECUTE = false;
+
+void loadConfig(const std::string &configPath) {
+    std::ifstream configFile(configPath);
+    if (!configFile) {
+        std::cerr << "Could not open config file: " << configPath << std::endl;
+        exit(1);
+    }
+
+    std::unordered_map<std::string, std::string> configMap;
+    std::string line;
+    while (std::getline(configFile, line)) {
+        auto delimiterPos = line.find('=');
+        if (delimiterPos == std::string::npos) continue;
+        
+        std::string key = line.substr(0, delimiterPos);
+        std::string value = line.substr(delimiterPos + 1);
+
+        configMap[key] = value;
+    }
+
+    // Set global variables based on config
+    if (configMap.count("port")) PORT = std::stoi(configMap["port"]);
+    if (configMap.count("lpac_path")) LPAC_PATH = configMap["lpac_path"];
+    if (configMap.count("enable_execute")) ENABLE_EXECUTE = (configMap["enable_execute"] == "true");
+    if (configMap.count("auth_token")) AUTH_TOKEN = configMap["auth_token"];
+}
+
 
 /*
 std::string base64_decode(const std::string &in) {
@@ -75,8 +106,18 @@ std::string execCommand(const std::string &command)
     return result;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
+    std::string configPath = "./config.txt"; // default path
+    if (argc > 1 && std::string(argv[1]) == "-c" && argc > 2) {
+        configPath = argv[2];
+    }
+
+    loadConfig(configPath);
+    std::cout << "Server running on port: " << PORT << std::endl;
+    std::cout << "LPAC Path: " << LPAC_PATH << std::endl;
+    std::cout << "Execute Enabled: " << (ENABLE_EXECUTE ? "Yes" : "No") << std::endl;
+    std::cout << "Auth Token: " << AUTH_TOKEN << std::endl;
     // std::locale::global(std::locale("en_US.UTF-8")); //linux
     // setlocale(LC_ALL, "en_US.UTF-8"); //win
     httplib::Server svr;
@@ -91,7 +132,9 @@ int main()
             res.set_content("Unauthorized", "text/plain");
             return;
         }
-
+        if (!ENABLE_EXECUTE){
+            res.set_content("Execute not enabled.", "text/plain");
+        }
         // 获取 /execute/ 后的参数
         std::string command_path = req.matches[1];
         if (command_path.empty()) {
@@ -104,7 +147,7 @@ int main()
         std::replace(command_path.begin(), command_path.end(), '/', ' ');
 
         // 构建 lpac 命令
-        std::string command = ".\\lpac.exe " + command_path;
+        std::string command = LPAC_PATH + command_path;
         std::cout << "custom command: " << command;
         // 执行命令并获取输出
         try {
@@ -128,7 +171,7 @@ int main()
         }
         std::cout << "/getprofile";
         // Execute the lpac command
-        std::string output = execCommand(".\\lpac.exe profile list");
+        std::string output = execCommand(LPAC_PATH + " profile list");
         std::cout << output;
         res.set_content(output, "text/plain"); });
 
@@ -142,7 +185,7 @@ int main()
         }
         std::cout << "/chipinfo";
         // Execute the lpac command
-        std::string output = execCommand(".\\lpac.exe chip info");
+        std::string output = execCommand(LPAC_PATH + " chip info");
         std::cout << output;
         res.set_content(output, "text/plain"); });
 
@@ -163,7 +206,7 @@ int main()
         }
         std::cout << "/enableprofile/" << iccid;
         // Construct the command with the ICCID
-        std::string command = ".\\lpac.exe profile enable " + iccid;
+        std::string command = LPAC_PATH + " profile enable " + iccid;
         std::string output = execCommand(command.c_str());
         std::cout << output;
 
@@ -187,7 +230,7 @@ int main()
         }
         std::cout << "/disableprofile/" << iccid;
         // Construct the command with the ICCID
-        std::string command = ".\\lpac.exe profile disable " + iccid;
+        std::string command = LPAC_PATH + " profile disable " + iccid;
         std::string output = execCommand(command.c_str());
         std::cout << output;
 
@@ -223,7 +266,7 @@ int main()
             res.set_content("Invalid Base64 encoding", "text/plain");
             return;
         }
-        std::string command = ".\\lpac.exe profile nickname " + iccid + " " + nickname;
+        std::string command = LPAC_PATH + " profile nickname " + iccid + " " + nickname;
 
         // 执行命令
         try {
@@ -237,8 +280,8 @@ int main()
 
 
     // 运行服务器
-    std::cout << "Server running on port 5000" << std::endl;
-    svr.listen("0.0.0.0", 5000);
+    //std::cout << "Server running on port 5000" << std::endl;
+    svr.listen("0.0.0.0", PORT);
 
     return 0;
 }
