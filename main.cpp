@@ -9,34 +9,51 @@
 #include <iomanip>
 #include <locale>
 #include <codecvt>
+#include "base64.hpp"
 
 const std::string AUTH_TOKEN = "WoYouYiYuZheng"; // 设置鉴权 Token
 
+/*
+std::string base64_decode(const std::string &in) {
+    const std::string base64_chars = 
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz"
+        "0123456789+/";
 
-std::string urlDecode(const std::string &encoded)
-{
-    std::ostringstream decoded;
-    for (size_t i = 0; i < encoded.length(); ++i)
-    {
-        if (encoded[i] == '%' && i + 2 < encoded.length())
-        {
-            std::istringstream hex(encoded.substr(i + 1, 2));
-            int value;
-            hex >> std::hex >> value;
-            decoded << static_cast<char>(value);
-            i += 2;
-        }
-        else if (encoded[i] == '+')
-        {
-            decoded << ' ';
-        }
-        else
-        {
-            decoded << encoded[i];
+    std::string out;
+    std::vector<int> T(256, -1);
+    for (int i = 0; i < 64; i++) {
+        T[base64_chars[i]] = i;
+    }
+
+    // 获取实际的字符串长度
+    size_t in_len = in.length();
+    
+    // 预分配输出缓冲区
+    out.reserve((in_len * 3) / 4);
+
+    unsigned int val = 0;
+    int valb = -8;
+    
+    // 使用显式长度而不是依赖字符串结束符
+    for (size_t i = 0; i < in_len; i++) {
+        unsigned char c = in[i];
+        if (T[c] == -1) continue;
+        
+        val = (val << 6) + T[c];
+        valb += 6;
+        
+        if (valb >= 0) {
+            out.push_back(char((val >> valb) & 0xFF));
+            valb -= 8;
         }
     }
-    return decoded.str();
+    std::cout << out;
+    out = out + "\0";
+    std::cout << out;
+    return out;
 }
+*/
 
 // 执行系统命令并返回输出
 std::string execCommand(const std::string &command)
@@ -177,9 +194,9 @@ int main()
         // Return the command output
         res.set_content(output, "text/plain"); });
 
-    svr.Get(R"(/nickname/(\w+)/(.+))", [&](const httplib::Request &req, httplib::Response &res)
-            {
-        // Check authorization
+    // 定义 /nickname/{iccid} 路由处理
+    svr.Post(R"(/nickname/(\d+))", [](const httplib::Request &req, httplib::Response &res) {
+        // 验证鉴权 Token
         auto auth = req.get_header_value("Authorization");
         if (auth != "Bearer " + AUTH_TOKEN) {
             res.status = 401;
@@ -187,26 +204,37 @@ int main()
             return;
         }
 
-        // Extract ICCID and nickname from URL
+        // 获取 ICCID 参数并验证
         std::string iccid = req.matches[1];
-        //std::string nickname = req.matches[2];
-        std::string nickname = urlDecode(req.matches[2]);
-        nickname = nickname + "  ";
-        std::cout << "nickname " << iccid << nickname;
-        //nickname = unicode_escape(nickname);
-        // Validate ICCID: check if it's numeric and longer than 6 characters
-        if (iccid.length() <= 6 || !std::all_of(iccid.begin(), iccid.end(), ::isdigit)) {
-            res.set_content("invalid iccid", "text/plain");
+        if (iccid.size() <= 6 || !std::all_of(iccid.begin(), iccid.end(), ::isdigit)) {
+            res.status = 400;
+            res.set_content("Invalid ICCID", "text/plain");
             return;
         }
 
-        // Construct the command with ICCID and nickname
-        std::string command = ".\\lpac.exe profile nickname " + iccid + " " + nickname + "";
-        std::string output = execCommand(command.c_str());
+        // URL解码请求体内容
+        std::string encoded_nickname = req.body + "\0";
+        std::string nickname;
+        try {
+            nickname = base64::from_base64(encoded_nickname)+"\0";
+            std::cout << nickname;
+        } catch (const std::exception &e) {
+            res.status = 400;
+            res.set_content("Invalid Base64 encoding", "text/plain");
+            return;
+        }
+        std::string command = ".\\lpac.exe profile nickname " + iccid + " " + nickname;
 
-        // Return the command output
-        res.set_content(output, "text/plain");
-        std::cout << output; });
+        // 执行命令
+        try {
+            std::string output = execCommand(command);  // execCommand 是您用来执行命令的函数
+            res.set_content(output, "text/plain");
+        } catch (const std::exception &e) {
+            res.status = 500;
+            res.set_content(std::string("Command execution failed: ") + e.what(), "text/plain");
+        }
+    });
+
 
     // 运行服务器
     std::cout << "Server running on port 5000" << std::endl;
