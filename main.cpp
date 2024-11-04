@@ -320,7 +320,86 @@ int main(int argc, char *argv[])
             res.set_content(std::string("Command execution failed: ") + e.what(), "text/plain");
         }
     });
+    
+    svr.Get(R"(/delete/(\w+))", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        auto auth = req.get_header_value("Authorization");
+        if (auth != "Bearer " + AUTH_TOKEN) {
+            res.status = 401;
+            res.set_content("Unauthorized", "text/plain");
+            return;
+        }
 
+        // Extract ICCID from URL
+        std::string iccid = req.matches[1];
+        if (iccid.length() <= 6 || !std::all_of(iccid.begin(), iccid.end(), ::isdigit)) {
+            res.set_content("invalid iccid", "text/plain");
+            return;
+        }
+        std::cout << "/delete/" << iccid << std::endl;
+        // Construct the command with the ICCID
+        std::string command = LPAC_PATH + " profile delete " + iccid;
+        std::string output = execCommand(command.c_str());
+        std::cout << output << std::endl;
+
+        // Return the command output
+        res.set_content(output, "text/plain"); });
+
+
+    svr.Get(R"(/getnotification)", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        auto auth = req.get_header_value("Authorization");
+        if (auth != "Bearer " + AUTH_TOKEN) {
+            res.status = 401;
+            res.set_content("Unauthorized", "text/plain");
+            return;
+        }
+
+        std::cout << "/getnotification/" << std::endl;
+        std::string command = LPAC_PATH + " notification list";
+        std::string output = execCommand(command.c_str());
+        std::cout << output << std::endl;
+
+        // Return the command output
+        res.set_content(output, "text/plain"); });
+
+    svr.Get(R"(/processnotification/(\w+))", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        auto auth = req.get_header_value("Authorization");
+        if (auth != "Bearer " + AUTH_TOKEN) {
+            res.status = 401;
+            res.set_content("Unauthorized", "text/plain");
+            return;
+        }
+
+        std::string sequenceID = req.matches[1];
+        std::cout << "/processnotification/" <<  sequenceID << std::endl;
+        std::string command = LPAC_PATH + " notification process " + sequenceID;
+        std::string output = execCommand(command.c_str());
+        std::cout << output << std::endl;
+
+        // Return the command output
+        res.set_content(output, "text/plain"); });
+
+
+    svr.Get(R"(/removenotification/(\w+))", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        auto auth = req.get_header_value("Authorization");
+        if (auth != "Bearer " + AUTH_TOKEN) {
+            res.status = 401;
+            res.set_content("Unauthorized", "text/plain");
+            return;
+        }
+
+        std::string sequenceID = req.matches[1];
+        std::cout << "/removenotification/" <<  sequenceID << std::endl;
+        std::string command = LPAC_PATH + " notification remove " + sequenceID;
+        std::string output = execCommand(command.c_str());
+        std::cout << output << std::endl;
+
+        // Return the command output
+        res.set_content(output, "text/plain"); });
+    
     // 运行服务器
     svr.listen("0.0.0.0", PORT);
 
