@@ -24,6 +24,10 @@ void setEnvironmentVariables(){
 }
 #else
 void setEnvironmentVariables() {
+    if (!is410WifiDongle){
+        std::cout << "Device is not set to 410 Wifi dongle." << std::endl;
+        return;
+    }
         setenv("QMI_DEVICE", "/dev/wwan0qmi0", 1);
         setenv("LPAC_APDU", "qmi", 1);
         std::cout << "Device is set to 410 wifi dongle." << std::endl;
@@ -112,7 +116,9 @@ int main(int argc, char *argv[])
             return;
         }
         if (!ENABLE_EXECUTE){
+            res.status = 401;
             res.set_content("Execute not enabled.", "text/plain");
+            return;
         }
         // 获取 /execute/ 后的参数
         std::string command_path = req.matches[1];
@@ -126,8 +132,8 @@ int main(int argc, char *argv[])
         std::replace(command_path.begin(), command_path.end(), '/', ' ');
 
         // 构建 lpac 命令
-        std::string command = LPAC_PATH + command_path;
-        std::cout << "custom command: " << command;
+        std::string command = LPAC_PATH + " "+ command_path;
+        std::cout << "custom command: " << command << std::endl;
         // 执行命令并获取输出
         try {
             std::string output = execCommand(command);
@@ -151,7 +157,7 @@ int main(int argc, char *argv[])
         std::cout << "/getprofile";
         // Execute the lpac command
         std::string output = execCommand(LPAC_PATH + " profile list");
-        std::cout << output;
+        std::cout << output <<std::endl;
         res.set_content(output, "text/plain"); });
 
     svr.Get("/chipinfo", [&](const httplib::Request &req, httplib::Response &res)
@@ -162,10 +168,10 @@ int main(int argc, char *argv[])
             res.set_content("Unauthorized", "text/plain");
             return;
         }
-        std::cout << "/chipinfo";
+        std::cout << "/chipinfo" << std::endl;
         // Execute the lpac command
         std::string output = execCommand(LPAC_PATH + " chip info");
-        std::cout << output;
+        std::cout << output << std::endl;
         res.set_content(output, "text/plain"); });
 
     svr.Get(R"(/enableprofile/(\w+))", [&](const httplib::Request &req, httplib::Response &res)
@@ -183,11 +189,11 @@ int main(int argc, char *argv[])
             res.set_content("invalid iccid", "text/plain");
             return;
         }
-        std::cout << "/enableprofile/" << iccid;
+        std::cout << "/enableprofile/" << iccid << std::endl;
         // Construct the command with the ICCID
         std::string command = LPAC_PATH + " profile enable " + iccid;
         std::string output = execCommand(command.c_str());
-        std::cout << output;
+        std::cout << output << std::endl;
 
         // Return the command output
         res.set_content(output, "text/plain"); });
@@ -207,11 +213,11 @@ int main(int argc, char *argv[])
             res.set_content("invalid iccid", "text/plain");
             return;
         }
-        std::cout << "/disableprofile/" << iccid;
+        std::cout << "/disableprofile/" << iccid << std::endl;
         // Construct the command with the ICCID
         std::string command = LPAC_PATH + " profile disable " + iccid;
         std::string output = execCommand(command.c_str());
-        std::cout << output;
+        std::cout << output << std::endl;
 
         // Return the command output
         res.set_content(output, "text/plain"); });
@@ -239,7 +245,7 @@ int main(int argc, char *argv[])
         std::string nickname;
         try {
             nickname = base64::from_base64(encoded_nickname)+"\0";
-            std::cout << nickname;
+            std::cout << "Nickname change:"<< iccid << " " << nickname << std::endl;
         } catch (const std::exception &e) {
             res.status = 400;
             res.set_content("Invalid Base64 encoding", "text/plain");
@@ -251,6 +257,7 @@ int main(int argc, char *argv[])
         try {
             std::string output = execCommand(command);  // execCommand 是您用来执行命令的函数
             res.set_content(output, "text/plain");
+            std::cout << output << std::endl;
         } catch (const std::exception &e) {
             res.status = 500;
             res.set_content(std::string("Command execution failed: ") + e.what(), "text/plain");
