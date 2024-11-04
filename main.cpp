@@ -12,27 +12,15 @@
 #include "base64.hpp"
 #include <fstream>
 #include <map>
+#include <vector>
+#include <stdexcept>
 #ifdef _WIN32
     #include <windows.h>
 #else
     #include <stdlib.h>
 #endif
 
-#ifdef _WIN32
-void setEnvironmentVariables(){
-    std::cout << "Device is not 410 Wifi dongle." << std::endl;
-}
-#else
-void setEnvironmentVariables() {
-    if (!is410WifiDongle){
-        std::cout << "Device is not set to 410 Wifi dongle." << std::endl;
-        return;
-    }
-        setenv("QMI_DEVICE", "/dev/wwan0qmi0", 1);
-        setenv("LPAC_APDU", "qmi", 1);
-        std::cout << "Device is set to 410 wifi dongle." << std::endl;
-}
-#endif
+void setEnvironmentVariables();
 
 // Global configuration variables
 std::string AUTH_TOKEN;
@@ -69,6 +57,22 @@ void loadConfig(const std::string &configPath) {
     setEnvironmentVariables();
 }
 
+#ifdef _WIN32
+void setEnvironmentVariables(){
+    std::cout << "Device is not 410 Wifi dongle." << std::endl;
+}
+#else
+void setEnvironmentVariables() {
+    if (!is410WifiDongle){
+        std::cout << "Device is not set to 410 Wifi dongle." << std::endl;
+        return;
+    }
+        setenv("QMI_DEVICE", "/dev/wwan0qmi0", 1);
+        setenv("LPAC_APDU", "qmi", 1);
+        std::cout << "Device is set to 410 wifi dongle." << std::endl;
+}
+#endif
+
 // 执行系统命令并返回输出
 std::string execCommand(const std::string &command)
 {
@@ -88,6 +92,25 @@ std::string execCommand(const std::string &command)
 
     return result;
 }
+
+std::string execLpacDownload(const std::string &command) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::string cmd = command + " 2>&1";  // Redirect stderr to stdout
+
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+
+    // Read command output continuously
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+
+    return result;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -264,9 +287,41 @@ int main(int argc, char *argv[])
         }
     });
 
+    // /download/ + POST LPA_AC, Currently Linux Only
+    svr.Post(R"(/download)", [](const httplib::Request &req, httplib::Response &res) {
+        // 验证鉴权 Token
+        auto auth = req.get_header_value("Authorization");
+        if (auth != "Bearer " + AUTH_TOKEN) {
+            res.status = 401;
+            res.set_content("Unauthorized", "text/plain");
+            return;
+        }
+
+        // URL解码请求体内容
+        std::string encoded_LPA_AC = req.body + "\0";
+        std::string LPA_AC;
+        try {
+            LPA_AC = base64::from_base64(encoded_LPA_AC)+"\0";
+            std::cout << "Download: "<< LPA_AC << std::endl;
+        } catch (const std::exception &e) {
+            res.status = 400;
+            res.set_content("Invalid Base64 encoding", "text/plain");
+            return;
+        }
+        std::string command = LPAC_PATH + " profile download -a \'" + LPA_AC + "\'";
+        std::cout << command << std::endl;
+
+        try {
+            std::string output = execLpacDownload(command);
+            res.set_content(output, "text/plain");
+            std::cout << output << std::endl;
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(std::string("Command execution failed: ") + e.what(), "text/plain");
+        }
+    });
 
     // 运行服务器
-    //std::cout << "Server running on port 5000" << std::endl;
     svr.listen("0.0.0.0", PORT);
 
     return 0;
